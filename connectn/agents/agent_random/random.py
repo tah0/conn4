@@ -1,4 +1,5 @@
 from agents.common import BoardPiece, SavedState, PlayerAction, NO_PLAYER
+from agents.common import get_valid_moves
 from typing import Optional, Tuple
 import numpy as np
 
@@ -12,9 +13,7 @@ def generate_move_random(
     :param saved_state:
     :return:
     """
-
-    top_row = board[-1]
-    open_moves = np.argwhere(top_row == NO_PLAYER).squeeze()
+    open_moves = get_valid_moves(board)
     action = np.random.choice(open_moves)
     # TODO: what to do with saved_state?
     return action, saved_state

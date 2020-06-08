@@ -128,4 +128,10 @@ def test_check_end_state():
     # TODO: check providing last_action argument behavior
 
 def test_get_valid_moves():
-    pass
+    from agents.common import get_valid_moves
+    from agents.common import initialize_game_state
+
+    dummy_board = initialize_game_state()
+    all_moves = np.arange(dummy_board.shape[1])
+
+    assert np.all(get_valid_moves(dummy_board) == all_moves)
