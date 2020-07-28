@@ -179,12 +179,23 @@ class MonteCarlo:
         :return:
         """
         current_rollout_state = node.board.copy()
-        print(node.board)
+        # print(node.board)
         curr_player = node.to_play
         while not check_game_over(current_rollout_state):
             possible_moves = get_valid_moves(current_rollout_state)
-            action = np.random.choice(possible_moves)
+            # print(f'possible: {possible_moves}, {type(possible_moves)}')
+            if possible_moves.size > 1:
+                action = np.random.choice(list(possible_moves))
+            else:
+                action = possible_moves
+                # print(f'action:{action}')
+
+            # try:
             current_rollout_state = apply_player_action(current_rollout_state, action, curr_player, copy=True)
+            # except ValueError:
+            #     print('error in applying action')
+            #     # print(f'state:{current_rollout_state}')
+
             curr_player = BoardPiece(curr_player % 2 + 1)
         return evaluate_end_state(current_rollout_state)
 
