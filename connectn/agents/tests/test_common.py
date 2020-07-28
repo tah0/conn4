@@ -41,6 +41,7 @@ def test_pretty_print_board():
 
     #TODO: test that X and O match up to players
 
+
 def test_string_to_board():
     from agents.common import string_to_board
     from agents.common import initialize_game_state, pretty_print_board
@@ -55,6 +56,7 @@ def test_string_to_board():
 
     # new board should match original board
     assert (ret==dummy_board).all()
+
 
 def test_apply_player_action():
     from agents.common import apply_player_action
@@ -102,6 +104,37 @@ def test_connected_four():
     #TODO: check for both/all players -- enumerate player
     #TODO: check for false positives -- 4 disconnected,
 
+
+def test_connected_four_iter():
+    from agents.common import connected_four_iter as connected_four
+    from agents.common import initialize_game_state
+
+    dummy_board = initialize_game_state()
+
+    # check empty board
+    assert connected_four(dummy_board, PLAYER1) is False
+
+    # check a horizontal win
+    horizontal_win_player1 = dummy_board.copy()
+    horizontal_win_player1[0, 0:4] = PLAYER1
+    assert connected_four(horizontal_win_player1, PLAYER1) is True
+
+    # check a vertical win
+    vertical_win_player1 = dummy_board.copy()
+    vertical_win_player1[0:4, 0] = PLAYER1
+    assert connected_four(vertical_win_player1, PLAYER1) is True
+
+    # check a diagonal win
+    diagonal_win_player1 = dummy_board.copy()
+    for i in range(4):
+        diagonal_win_player1[i,i] = PLAYER1
+    assert connected_four(diagonal_win_player1, PLAYER1) is True
+
+    #TODO: check all possible win states
+    #TODO: check for both/all players -- enumerate player
+    #TODO: check for false positives -- 4 disconnected,
+
+
 def test_check_end_state():
     from agents.common import check_end_state
     from agents.common import initialize_game_state
@@ -127,6 +160,7 @@ def test_check_end_state():
     # TODO: a full board with no win for either player
     # TODO: check providing last_action argument behavior
 
+
 def test_get_valid_moves():
     from agents.common import get_valid_moves
     from agents.common import initialize_game_state
@@ -135,3 +169,29 @@ def test_get_valid_moves():
     all_moves = np.arange(dummy_board.shape[1])
 
     assert np.all(get_valid_moves(dummy_board) == all_moves)
+
+
+def test_check_game_over():
+    from agents.common import check_game_over
+    from agents.common import initialize_game_state
+
+    dummy_board = initialize_game_state()
+    player = PLAYER1
+    assert check_game_over(dummy_board) is False
+
+    horizontal_win_player1 = dummy_board.copy()
+    horizontal_win_player1[0, 0:4] = PLAYER1
+    assert check_game_over(horizontal_win_player1) is True
+
+    # check a vertical win
+    vertical_win_player1 = dummy_board.copy()
+    vertical_win_player1[0:4, 0] = PLAYER1
+    assert check_game_over(vertical_win_player1) is True
+
+    # check a diagonal win
+    diagonal_win_player1 = dummy_board.copy()
+    for i in range(4):
+        diagonal_win_player1[i,i] = PLAYER1
+    assert check_game_over(diagonal_win_player1) is True
+
+    # TODO: check wins/losses for both players; without a player

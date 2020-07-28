@@ -66,9 +66,18 @@ def human_vs_agent(
                     break
 
 
-from agents.agent_random import generate_move
-from agents.agent_minimax import generate_move
+from agents.agent_random import generate_move as random_move
+# from agents.agent_negamax import generate_move
+# from agents.agent_minimax import generate_move
+from agents.agent_mcts import generate_move
+
 
 if __name__ == "__main__":
+    # play vs self
     # human_vs_agent(user_move)
+
+    # play vs the agent
     human_vs_agent(generate_move)
+
+    # play agent vs random move
+    # human_vs_agent(generate_move, random_move)

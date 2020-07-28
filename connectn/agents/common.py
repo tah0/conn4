@@ -9,18 +9,11 @@ import scipy as sp
 
 from typing import Callable, Tuple, List
 
+CONNECT_N = 4  # required connected pieces to win
 BoardPiece = np.int8  # The data type (dtype) of the board
 NO_PLAYER = BoardPiece(0)  # board[i, j] == NO_PLAYER where the position is empty
 PLAYER1 = BoardPiece(1)  # board[i, j] == PLAYER1 where player 1 has a piece
 PLAYER2 = BoardPiece(2)  # board[i, j] == PLAYER2 where player 2 has a piece
-
-board_symbols = {
-    NO_PLAYER: '.',
-    PLAYER1: 'X',
-    PLAYER2: 'O'}
-
-CONNECT_N = 4  # required connected pieces to win
-
 PlayerAction = np.int8  # The column to be played
 
 
@@ -29,24 +22,25 @@ class GameState(Enum):
     IS_DRAW = -1
     STILL_PLAYING = 0
 
-def initialize_game_state(boardShape=(6,7), fillValue=0) -> np.ndarray:
-    """
-    Returns an ndarray, shape (6, 7) and data type (dtype) BoardPiece, initialized to 0 (NO_PLAYER).
-    """
-    return np.full(shape=boardShape, fill_value=fillValue, dtype=BoardPiece)
 
-def pretty_print_board(board: np.ndarray) -> str:
+def initialize_game_state(board_shape=(6, 7), fill_value: BoardPiece = NO_PLAYER) -> np.ndarray:
     """
-    Should return `board` converted to a human readable string representation,
-    to be used when playing or printing diagnostics to the console (stdout). The piece in
-    board[0, 0] should appear in the lower-left. Here's an example output:
+    Returns an ndarray, shape (6, 7) and data type (dtype) BoardPiece, initialized to fill_value (default NO_PLAYER).
+    """
+    return np.full(shape=board_shape, fill_value=fill_value, dtype=BoardPiece)
+
+
+def pretty_print_board(board: np.ndarray, board_symbols: dict = {NO_PLAYER: '.', PLAYER1: 'X', PLAYER2: 'O'}) -> str:
+    """
+    Returns a readable string of the input board, substituting symbols for player pieces, for example:
+
     |==============|
-    |              |
-    |              |
-    |    X X       |
-    |    O X X     |
-    |  O X O O     |
-    |  O O X X     |
+    |. . . . . . . |
+    |. . . . . . . |
+    |. . X X . . . |
+    |. . O X X . . |
+    |. O X O O . . |
+    |. O O X X . . |
     |==============|
     |0 1 2 3 4 5 6 |
     """
@@ -60,15 +54,14 @@ def pretty_print_board(board: np.ndarray) -> str:
     # list of strings board rows, e.g. '|  O O X X     |'
     rows = ['|{}|'.format(''.join(str(board[row])[1:-1])) for row in range(board.shape[0])[::-1]]
 
-    #TODO: replace 0,1,2 with symbols for printing
-
-    # for key, value in board_symbols:
-
     # combine string elements together with \n join
     pretty_rows = '\n'.join(rows)
+    for piece in (PLAYER1, PLAYER2, NO_PLAYER):
+        pretty_rows = pretty_rows.replace(str(piece), board_symbols[piece])
     pretty_full = '\n'.join([border, pretty_rows, border, col_label])
 
     return pretty_full
+
 
 def string_to_board(pp_board: str) -> np.ndarray:
     """
@@ -84,6 +77,7 @@ def string_to_board(pp_board: str) -> np.ndarray:
     board = [list(map(int, r[1:-1].split(' '))) for r in rows]
     return np.asarray(board, dtype=BoardPiece)
 
+
 def apply_player_action(
     board: np.ndarray, action: PlayerAction, player: BoardPiece, copy: bool = False
 ) -> np.ndarray:
@@ -93,11 +87,11 @@ def apply_player_action(
     """
     # max index of empty column
     column = board[:, action]
-    try:
-        lowest_open = np.min(np.argwhere(column == 0))
-    except ValueError:
-        #TODO: signal that an invalid move was attempted
-        pass
+    # try:
+    lowest_open = min(np.argwhere(column == 0))
+    # except ValueError:
+    #     #TODO: signal that an invalid move was attempted
+    #     pass
 
     # return changed board, or copy of
     if copy:
@@ -113,6 +107,7 @@ col_kernel = np.ones((CONNECT_N, 1), dtype=BoardPiece)
 row_kernel = np.ones((1, CONNECT_N), dtype=BoardPiece)
 dia_l_kernel = np.diag(np.ones(CONNECT_N, dtype=BoardPiece))
 dia_r_kernel = np.array(np.diag(np.ones(CONNECT_N, dtype=BoardPiece))[::-1, :])
+
 
 # TODO: get njit working for connected_four
 # @njit()
@@ -150,6 +145,31 @@ def connected_four(
     return False
 
 
+@njit()
+def connected_four_iter(
+    board: np.ndarray, player: BoardPiece, last_action: Optional[PlayerAction] = None
+) -> bool:
+    rows, cols = board.shape
+    rows_edge = rows - CONNECT_N + 1
+    cols_edge = cols - CONNECT_N + 1
+    for i in range(rows):
+        for j in range(cols_edge):
+            if np.all(board[i, j:j+CONNECT_N] == player):
+                return True
+    for i in range(rows_edge):
+        for j in range(cols):
+            if np.all(board[i:i+CONNECT_N, j] == player):
+                return True
+    for i in range(rows_edge):
+        for j in range(cols_edge):
+            block = board[i:i+CONNECT_N, j:j+CONNECT_N]
+            if np.all(np.diag(block) == player):
+                return True
+            if np.all(np.diag(block[::-1, :]) == player):
+                return True
+    return False
+
+# @njit()
 def check_end_state(
     board: np.ndarray, player: BoardPiece, last_action: Optional[PlayerAction] = None,
 ) -> GameState:
@@ -159,15 +179,54 @@ def check_end_state(
     or is play still on-going (GameState.STILL_PLAYING)?
     """
     # Check if the player has a connected four
-    if connected_four(board=board, player=player, last_action=last_action):
+    # if connected_four(board=board, player=player, last_action=last_action):
+    if connected_four_iter(board=board, player=player, last_action=last_action):
         return GameState(1)
     # Check if no valid moves remain -- that is, if all board locations are occupied by a player
-    elif board.all():
-        # TODO: replace with get_valid_moves returning that there are none
+    elif get_valid_moves(board).size == 0:
         return GameState(-1)
     # Otherwise, game is still ongoing
     else:
         return GameState(0)
+
+
+#TODO: fold this function into check_end_state, so that we check the end state only once
+@njit()
+def check_game_over(
+    board: np.ndarray, last_action: Optional[PlayerAction] = None,
+) -> bool:
+    """
+    Return if the board is a terminal state (either player has won, or a draw).
+    :param board:
+    :param last_action:
+    :return:
+    """
+    if connected_four_iter(board=board, player=PLAYER1, last_action=last_action):
+        return True
+    elif connected_four_iter(board=board, player=PLAYER2, last_action=last_action):
+        return True
+    elif board.all():
+        return True
+    else:
+        return False
+
+def evaluate_end_state(board: np.ndarray):
+    """
+    Takes a terminal state and returns the winning player (PLAYER1, PLAYER2) or a draw (IS_DRAW)
+
+    :param board: the (game over) state to evaluate
+    :return: player who won, or GameState.IS_DRAW
+
+    """
+    end = check_end_state(board, PLAYER1)
+    if end == GameState.IS_WIN:  # win state
+        return PLAYER1
+    elif end == GameState.IS_DRAW:  # draw state
+        return GameState.IS_DRAW
+    elif check_end_state(board, PLAYER2) == GameState.IS_WIN:  # lose state
+        return PLAYER2
+    else:
+        raise ValueError('Evaluating end state on a non-end state!')
 
 
 def get_valid_moves(
@@ -177,15 +236,24 @@ def get_valid_moves(
     Return the available moves for a given board.
 
     :param board:
-    :param player:
-    :param last_action:
     :return:
     """
+    # get open slots in the top row
     top_row = board[-1]
     open_moves = np.argwhere(top_row == NO_PLAYER).squeeze()
-
     return open_moves
 
+
+# def randomly_choose_move(moves: np.ndarray) -> int:
+#     """
+#     Pick uniformly from among array values if there are more than one. Extends np.random.choice to single value arrays.
+#     :param moves:
+#     :return:
+#     """
+#     if moves.size > 1:
+#         return np.random.choice(moves)
+#     else:
+#         return int(moves[0])
 
 class SavedState:
     pass

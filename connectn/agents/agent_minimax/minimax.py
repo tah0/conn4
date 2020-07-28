@@ -1,52 +1,29 @@
 from agents.common import BoardPiece, SavedState, PlayerAction, NO_PLAYER, CONNECT_N, GameState
-from agents.common import get_valid_moves, apply_player_action, check_end_state
+from agents.common import get_valid_moves, apply_player_action, check_end_state, check_game_over
+from agents.heuristic import low_row_heuristic, negamax_heuristic
 from typing import Optional, Tuple
 import numpy as np
 
-from scipy.signal.sigtools import _convolve2d
-
-col_kernel = np.ones((CONNECT_N, 1), dtype=BoardPiece)
-row_kernel = np.ones((1, CONNECT_N), dtype=BoardPiece)
-dia_l_kernel = np.diag(np.ones(CONNECT_N, dtype=BoardPiece))
-dia_r_kernel = np.array(np.diag(np.ones(CONNECT_N, dtype=BoardPiece))[::-1, :])
-
 MAX_DEPTH = 4
 
-
-def heuristic(board: np.ndarray, player: BoardPiece) -> float:
+def evaluate_end_state(board: np.ndarray, player: BoardPiece, heuristic=negamax_heuristic) -> float:
     """
+    :param heuristic:
     :param board:
     :param player:
     :return:
     """
-    board = board.copy()
-
-    other_player = BoardPiece(player % 2 + 1)
-    board[board == other_player] = -1
-    board[board == player] = 1
-    score = 0
-    for kernel in (col_kernel, row_kernel, dia_l_kernel, dia_r_kernel):
-        result = _convolve2d(board, kernel, 1, 0, 0, BoardPiece(0))
-    score += np.sum(result == (CONNECT_N - 1))
-    return score
-
-
-def evaluate_end_state(board: np.ndarray, player: BoardPiece) -> float:
-    """
-    :param board:
-    :param player:
-    :return:
-    """
-    other_player = BoardPiece(player % 2 + 1)
     end = check_end_state(board, player)
-    if end == GameState.STILL_PLAYING:
-        return heuristic(board, player)
-    elif end == GameState.IS_WIN:  # win state
+    other_player = BoardPiece(player % 2 + 1)
+    if end == GameState.IS_WIN:  # win state
         return np.inf
-    elif check_end_state(board, other_player) == GameState.IS_WIN:
-        return -np.inf
     elif end == GameState.IS_DRAW:  # draw state
         return 0
+    # TODO: workaround to exclude checking the end state twice
+    elif check_end_state(board, other_player) == GameState.IS_WIN:
+        return -np.inf
+    else:
+        return heuristic(board, player)
 
 
 def minimax_value(board: np.ndarray, player: BoardPiece, maxing: bool, depth: int) -> float:
@@ -54,6 +31,7 @@ def minimax_value(board: np.ndarray, player: BoardPiece, maxing: bool, depth: in
 
     :param board:
     :param player:
+    :param maxing:
     :param depth:
     :return:
     """
@@ -61,7 +39,7 @@ def minimax_value(board: np.ndarray, player: BoardPiece, maxing: bool, depth: in
     valid_moves = get_valid_moves(board)
     value = 0
 
-    if depth == 0:
+    if depth == 0 or check_game_over(board):
         return evaluate_end_state(board, player)
     elif maxing is True:
         value = -np.inf
@@ -77,7 +55,7 @@ def minimax_value(board: np.ndarray, player: BoardPiece, maxing: bool, depth: in
     else:
         value = np.inf
         for _, move in enumerate(valid_moves):
-            # print('Mining')
+            # print('Mining')   
             # print('move:', move)
             MMv = minimax_value(board=apply_player_action(board, move, player, copy=True),
                                                 player=player,
@@ -98,7 +76,7 @@ def alpha_beta_value(
     other_player = BoardPiece(player % 2 + 1)
     valid_moves = get_valid_moves(board)
 
-    if depth == 0:
+    if depth == 0 or check_game_over(board):
         return evaluate_end_state(board, player)
     elif maxing is True:
         value = -np.inf
@@ -140,12 +118,46 @@ def generate_move_minimax(
     :return:
     """
     open_moves = get_valid_moves(board)
-    scores = [minimax_value(apply_player_action(board, move, player, copy=True), player, True, MAX_DEPTH) for move in open_moves]
+    print(f'Open moves: {open_moves}')
+
+    new_states = [apply_player_action(board, move, player, copy=True) for move in open_moves]
+
+    # if a move results in a win, play it
+    winning_moves = np.array([check_end_state(state, player) for state in new_states]) == GameState.IS_WIN
+    if np.any(winning_moves):
+        actions = open_moves[np.argwhere(winning_moves)].squeeze()
+        if actions.size > 1:
+            action = np.random.choice(actions)
+        else:
+            action = actions
+        print(f'playing action {action} for a win')
+        return action, saved_state
+
+    # if a move results in blocking an opponent's win, play it
+    other_player = BoardPiece(player % 2 + 1)
+
+    new_states_other = [apply_player_action(board, move, other_player, copy=True) for move in open_moves]
+    blocking_moves = np.array([check_end_state(state, other_player) for state in new_states_other]) == GameState.IS_WIN
+    if np.any(blocking_moves):
+        actions = open_moves[np.argwhere(blocking_moves)].squeeze()
+        if actions.size > 1:
+            action = np.random.choice(actions)
+        else:
+            action = actions
+        print(f'playing action {action} for a block')
+        return action, saved_state
+
+    # otherwise, use the heuristic function to score possible states
+
+    # scores = [minimax_value(apply_player_action(board, move, player, copy=True), player, True, MAX_DEPTH) for move in open_moves]
     scores = [alpha_beta_value(apply_player_action(board, move, player, copy=True), player, True, MAX_DEPTH, alpha=-np.inf, beta=np.inf) for move in open_moves]
-    print(scores)
-    # TODO: randomly select among best choices
-    # best_moves = open_moves[np.argwhere(scores == np.max(scores))]
-    # action = np.random.choice(best_moves)
-    action = open_moves[np.argmax(scores)]
-    # TODO: what to do with saved_state?
+
+    # randomly select among best moves
+    if np.sum(scores == np.max(scores)) > 1:
+        best_moves = open_moves[np.argwhere(scores == np.max(scores))].squeeze()
+        action = np.random.choice(best_moves)
+    else:
+        action = open_moves[np.argmax(scores)].squeeze()
+    print(f'Heuristic values: {scores}')
+    print(f'playing action {action} with heuristic value {np.max(scores)}')
     return action, saved_state
