@@ -6,7 +6,7 @@ import numpy as np
 
 class MonteCarloNode:
     """
-    A Monte Carlo search tree node -- extends the game board with information for MCTS
+    A Monte Carlo search tree node -- extends the game board with tree information, sampling statistics.
     """
     def __init__(self, board: np.ndarray, to_play: BoardPiece, last_move: PlayerAction = None, parent=None):
         # board
@@ -19,14 +19,23 @@ class MonteCarloNode:
 
         # children methods
         self.children = {}  # dict of children resulting from valid moves
-        self.legal_moves = get_valid_moves(board)
+        self.legal_moves = list(get_valid_moves(board))
         self._unexpanded_moves = list(get_valid_moves(board))  # moves not evaluated yet
+        # self._unexpanded_moves = None  # moves not evaluated yet
         self.expanded_moves = []
 
         # MCTS methods
         self.n_plays = 0
         self.n_wins = 0
         # self.n_losses = 0
+
+    def __hash__(self):
+        # in case I rewrite the tree class to store
+        return hash(self.board.tostring()) + hash(self.to_play)
+
+    # inheriting array methods?
+    # def __array__(self):
+    #     return self.board
 
     # experimenting with using @property...
     @property
@@ -40,13 +49,6 @@ class MonteCarloNode:
             self._unexpanded_moves = list(get_valid_moves(self.board))
         else:
             return self._unexpanded_moves
-
-    # def __repr__(self):
-    #     return f"{self.__class__.__name__}" # ({self.}, value={self._i})
-    #
-    # inheriting array methods?
-    # def __array__(self):
-    #     return self.board
 
     def get_child(self, move: PlayerAction):
         """
@@ -68,6 +70,7 @@ class MonteCarloNode:
         new_node = MonteCarloNode( new_board, to_play=BoardPiece(self.to_play % 2 + 1), last_move=move, parent=self)
         self.children[move] = new_node
         self.expanded_moves.append(move)
+        self.unexpanded_moves.pop(self.unexpanded_moves.index(move))
         return new_node
 
     def is_fully_expanded(self):
@@ -96,7 +99,7 @@ class MonteCarloNode:
         """
         return check_game_over(self.board)
 
-    def getUCB1(self, bias = 1.4):
+    def get_ucb1(self, bias=1.4):
         """
         Compute the UCB1 value for the given node.
 
@@ -109,7 +112,7 @@ class MonteCarloNode:
 
 class MonteCarlo:
     """ Monte Carlo Tree class for holding nodes, for organizing MCTS."""
-    def __init__(self, player):
+    def __init__(self, player: BoardPiece):
         self.nodes = {}
         self.player = player
 
@@ -124,13 +127,13 @@ class MonteCarlo:
         if (hash(state.tostring()) + hash(to_play)) not in self.nodes:
             self.nodes[hash(state.tostring()) + hash(to_play)] = MonteCarloNode(state, to_play)
 
-    def run_search(self, state: np.ndarray, to_play: BoardPiece, n_sims=10000):
+    def run_search(self, state: np.ndarray, to_play: BoardPiece, n_sims=3000):
         """
-        Select moves until an unexpanded, non-terminal node is reached,
+        Find an unexpanded, non-terminal node, expand it, simulate a game from it, and backprop the result.
 
         :param state:
         :param to_play: which player's turn it is
-        :param n_sims:
+        :param n_sims: iterations to run
         :return:
         """
         self.make_node(state, to_play)
@@ -140,11 +143,13 @@ class MonteCarlo:
             if check_game_over(node.board) is False:
                 node = self.expand(node)
                 winner = self.simulate(node)
+            else:
+                winner = self.simulate(node)
             self.backpropagate(node, winner)
 
-    def select(self, state: np.ndarray, to_play: BoardPiece):
+    def select(self, state: np.ndarray, to_play: BoardPiece) -> MonteCarloNode:
         """
-        Select
+        Select moves via max UCB1 until an un-fully expanded, non-terminal node is reached, which is then returned.
 
         :param state:
         :param to_play: which player's turn it is
@@ -153,25 +158,24 @@ class MonteCarlo:
         node = self.nodes[hash(state.tostring()) + hash(to_play)]
 
         while node.is_fully_expanded() and (not node.is_leaf()):
-            scores = [ node.get_child(a).getUCB1() for a in node.legal_moves ]
+            scores = [node.get_child(a).get_ucb1() for a in node.legal_moves]
             best_move = node.legal_moves[np.argmax(scores)]
             node = node.get_child(best_move)
         return node
 
-    def expand(self, node: MonteCarloNode):
+    def expand(self, node: MonteCarloNode) -> MonteCarloNode:
         """
         Expand a child of an un-fully expanded node. Randomly selects from unexpanded moves.
 
         :param node:
         :return:
         """
-        i = np.random.randint(len(node.unexpanded_moves))
-        play = node.unexpanded_moves.pop(i)
+        play = np.random.choice(node.unexpanded_moves)
         child_node = node.expand(play)
         self.nodes[hash(child_node.board.tostring()) + hash(child_node.to_play)] = child_node
         return child_node
 
-    def simulate(self, node: MonteCarloNode):
+    def simulate(self, node: MonteCarloNode) -> Union[BoardPiece, GameState]:
         """
         Simulate a game from a given node -- outcome is either player or GameState.IS_DRAW
 
@@ -179,25 +183,18 @@ class MonteCarlo:
         :return:
         """
         current_rollout_state = node.board.copy()
-        # print(node.board)
         curr_player = node.to_play
         while not check_game_over(current_rollout_state):
             possible_moves = get_valid_moves(current_rollout_state)
-            # print(f'possible: {possible_moves}, {type(possible_moves)}')
             if possible_moves.size > 1:
                 action = np.random.choice(list(possible_moves))
             else:
                 action = possible_moves
-                # print(f'action:{action}')
 
-            # try:
             current_rollout_state = apply_player_action(current_rollout_state, action, curr_player, copy=True)
-            # except ValueError:
-            #     print('error in applying action')
-            #     # print(f'state:{current_rollout_state}')
-
             curr_player = BoardPiece(curr_player % 2 + 1)
         return evaluate_end_state(current_rollout_state)
+
 
     def backpropagate(self, node: MonteCarloNode, winner: Union[BoardPiece, GameState]):
         """
@@ -208,12 +205,12 @@ class MonteCarlo:
         :return:
         """
         node.n_plays += 1
-        # check if the last player is equal to the winner at this state
-        # if BoardPiece(node.to_play % 2 + 1) == winner:
+        # check if the player is equal to the winner at this state
         if winner == self.player:
             node.n_wins += 1
+        # recursively call backprop until node has no parent (i.e. is the root)
         if node.parent:
-            self.backpropagate( node.parent, winner )
+            self.backpropagate(node.parent, winner)
 
     def best_play(self, state: np.ndarray, to_play: BoardPiece):
         """
@@ -227,8 +224,8 @@ class MonteCarlo:
         """
         self.make_node(state, to_play)
 
-        if self.nodes[hash(state.tostring()) + hash(to_play)].is_fully_expanded() is False:
-            raise ValueError('Trying to best_play without full expansion!')
+        # if self.nodes[hash(state.tostring()) + hash(to_play)].is_fully_expanded() is False:
+            # raise ValueError('Trying to best_play without full expansion!')
 
         node = self.nodes[hash(state.tostring()) + hash(to_play)]
 
@@ -240,7 +237,7 @@ class MonteCarlo:
         best_move = node.legal_moves[np.argmax(scores)]
         return best_move, scores
 
-    def get_stats(self, state, to_play):
+    def get_stats(self, state, to_play) -> dict:
         node_hash = hash(state.tostring()) + hash(to_play)
         node = self.nodes[node_hash]
         stats = {'n_plays': node.n_plays,
@@ -250,14 +247,15 @@ class MonteCarlo:
                               'n_wins' : c.n_wins} for c in node.children.values()] }
         return stats
 
+
 def generate_move_mcts(
     board: np.ndarray, player: BoardPiece, saved_state: Optional[SavedState]
 ) -> Tuple[PlayerAction, Optional[SavedState]]:
     """
-
+    Search via MCTS from current board for given player's move, return best play according to best_play.
     """
     mcts = MonteCarlo(player)
     mcts.run_search(board, player)
     action, scores = mcts.best_play(board, player)
-    print(mcts.get_stats(board, player))
+    # print(mcts.get_stats(board, player))
     return action, saved_state

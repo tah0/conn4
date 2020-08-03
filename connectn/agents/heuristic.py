@@ -23,12 +23,14 @@ weights = {
     3: 100,
 }
 
-# TODO: rename
+
 def negamax_heuristic(board: np.ndarray, player: BoardPiece) -> float:
     """
-    :param board:
-    :param player:
-    :return:
+    A heuristic for negamax -- the weighted sum of n-in-a-row for the current board.
+
+    :param board: current board
+    :param player: the player to play
+    :return: selected move
     """
     board = board.copy()
 
@@ -48,6 +50,13 @@ def negamax_heuristic(board: np.ndarray, player: BoardPiece) -> float:
 
 
 def low_row_heuristic(board:np.ndarray, player:BoardPiece) -> float:
+    """
+    A dumb heuristic to play the move with lowest open row.
+
+    :param board: current board
+    :param player: the player to play
+    :return: selected move
+    """
     board = board.copy()
     xx, yy = np.meshgrid(np.arange(board.shape[0]), np.arange(board.shape[1]))
     # xx.T is row

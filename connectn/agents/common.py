@@ -69,11 +69,12 @@ def string_to_board(pp_board: str) -> np.ndarray:
     This is quite useful for debugging, when the agent crashed and you have the last
     board state as a string.
     """
-
+    pp_board = pp_board.replace('.', '0')
     rows = pp_board.split('\n')
     rows = rows[1:-2] # exclude borders
     rows = rows[::-1] # reverse order
     # assuming the printed board values are the same as the BoardPieces
+
     board = [list(map(int, r[1:-1].split(' '))) for r in rows]
     return np.asarray(board, dtype=BoardPiece)
 
@@ -86,13 +87,8 @@ def apply_player_action(
     board is returned. If copy is True, makes a copy of the board before modifying it.
     """
     # max index of empty column
-    column = board[:, action]
-    # try:
+    column = board[:, action].squeeze()
     lowest_open = min(np.argwhere(column == 0))
-    # except ValueError:
-    #     #TODO: signal that an invalid move was attempted
-    #     pass
-
     # return changed board, or copy of
     if copy:
         out = board.copy()
@@ -109,7 +105,6 @@ dia_l_kernel = np.diag(np.ones(CONNECT_N, dtype=BoardPiece))
 dia_r_kernel = np.array(np.diag(np.ones(CONNECT_N, dtype=BoardPiece))[::-1, :])
 
 
-# TODO: get njit working for connected_four
 # @njit()
 def connected_four(
     board: np.ndarray, player: BoardPiece, last_action: Optional[PlayerAction] = None,
@@ -124,14 +119,16 @@ def connected_four(
     # from Owen Mackwood's connected_four_convolve
     board = board.copy()
 
-    other_player = BoardPiece(player % 2 + 1)
-    flat = board.flatten()  # to play nice with numba have to use 1d boolean indexing
-    flat[flat == other_player] = BoardPiece(0)
-    flat[flat == player] = BoardPiece(1)
-    board = flat.reshape(board.shape)
+    # other_player = BoardPiece(player % 2 + 1)
+    # flat = board.flatten()  # to play nice with numba have to use 1d boolean indexing
+    # flat[flat == other_player] = BoardPiece(0)
+    # flat[flat == player] = BoardPiece(1)
+    # board = flat.reshape(board.shape)
 
-    # board[board == other_player] = BoardPiece(0)
-    # board[board == player] = BoardPiece(1)
+    other_player = BoardPiece(player % 2 + 1)
+    board[board == other_player] = NO_PLAYER
+    board[board == player] = BoardPiece(1)
+
     # TODO: add condition for if last_action provided
     # if last_action:
     #     result = _convolve2d(board, kernel, 1
@@ -169,9 +166,13 @@ def connected_four_iter(
                 return True
     return False
 
-# @njit()
+
+CONNECTION = connected_four_iter
+
+
+# njit makes this _slower_
 def check_end_state(
-    board: np.ndarray, player: BoardPiece, last_action: Optional[PlayerAction] = None,
+    board: np.ndarray, player: BoardPiece, last_action: Optional[PlayerAction] = None, connected_function = CONNECTION
 ) -> GameState:
     """
     Returns the current game state for the current `player`, i.e. has their last
@@ -180,36 +181,42 @@ def check_end_state(
     """
     # Check if the player has a connected four
     # if connected_four(board=board, player=player, last_action=last_action):
-    if connected_four_iter(board=board, player=player, last_action=last_action):
+    if connected_function(board=board, player=player, last_action=last_action):
         return GameState(1)
+        # return GameState.IS_WIN
+
     # Check if no valid moves remain -- that is, if all board locations are occupied by a player
     elif get_valid_moves(board).size == 0:
         return GameState(-1)
+        # return GameState.IS_DRAW
     # Otherwise, game is still ongoing
     else:
         return GameState(0)
+        # return GameState.STILL_PLAYING
 
 
-#TODO: fold this function into check_end_state, so that we check the end state only once
-@njit()
+# njit makes this _slower_
 def check_game_over(
-    board: np.ndarray, last_action: Optional[PlayerAction] = None,
+    board: np.ndarray, last_action: Optional[PlayerAction] = None, connected_function = CONNECTION
 ) -> bool:
     """
     Return if the board is a terminal state (either player has won, or a draw).
+    :param connected_function:
     :param board:
     :param last_action:
     :return:
     """
-    if connected_four_iter(board=board, player=PLAYER1, last_action=last_action):
+    if connected_function(board=board, player=PLAYER1, last_action=last_action):
         return True
-    elif connected_four_iter(board=board, player=PLAYER2, last_action=last_action):
+    elif connected_function(board=board, player=PLAYER2, last_action=last_action):
         return True
     elif board.all():
         return True
     else:
         return False
 
+
+# relies on njit-slower func.
 def evaluate_end_state(board: np.ndarray):
     """
     Takes a terminal state and returns the winning player (PLAYER1, PLAYER2) or a draw (IS_DRAW)
@@ -228,7 +235,7 @@ def evaluate_end_state(board: np.ndarray):
     else:
         raise ValueError('Evaluating end state on a non-end state!')
 
-
+@njit()
 def get_valid_moves(
     board: np.ndarray
 ) -> np.ndarray:
@@ -238,9 +245,13 @@ def get_valid_moves(
     :param board:
     :return:
     """
-    # get open slots in the top row
-    top_row = board[-1]
-    open_moves = np.argwhere(top_row == NO_PLAYER).squeeze()
+    top_row = board[-1] # get open slots in the top row
+
+    # njit-friendly indices
+    open_moves = np.nonzero(top_row == NO_PLAYER)[0]
+
+    # old alternative not compatible with njit:
+    # open_moves = np.argwhere(top_row == NO_PLAYER).squeeze()
     return open_moves
 
 

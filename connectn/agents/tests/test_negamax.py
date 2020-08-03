@@ -1,10 +1,10 @@
 import numpy as np
 from agents.common import BoardPiece, NO_PLAYER, PLAYER1, PLAYER2, PlayerAction, GameState
+from agents.common import initialize_game_state
 
 
 def test_evaluate_end_state():
     from agents.agent_negamax.negamax import evaluate_end_state
-    from agents.common import initialize_game_state
 
     dummy_board = initialize_game_state()
     assert evaluate_end_state(dummy_board, PLAYER1) == 0

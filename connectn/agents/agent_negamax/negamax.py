@@ -9,9 +9,11 @@ MAX_DEPTH = 4
 
 def evaluate_end_state(board: np.ndarray, player: BoardPiece, heuristic=negamax_heuristic) -> float:
     """
-    :param heuristic:
-    :param board:
-    :param player:
+    Return +/- inf for a win, loss for the given player at the board; 0 for a draw; the hueristic value for an ongoing game.
+
+    :param heuristic: heuristic function to call on unfinished game boards
+    :param board: current board state
+    :param player: current player
     :return:
     """
     other_player = BoardPiece(player % 2 + 1)
@@ -34,11 +36,12 @@ def negamax(
         depth: int,
         ) -> float:
     """
-
+    Search game tree using plain negamax.
     This is "colorless" negamax -- it assumes the heuristic value is from the perspective of the player its called on
-    :param board:
-    :param player:
-    :param depth:
+
+    :param board: current board state
+    :param player: current player
+    :param depth: max depth to search in game tree
     :return:
     """
     # if we're at an end state,
@@ -64,6 +67,16 @@ def negamax_alpha_beta(
         depth: int,
         alpha: float,
         beta: float ) -> float:
+    """
+    Search game tree using alpha-beta pruning with negamax.
+
+    :param board: current board state
+    :param player: current player
+    :param depth: max depth to search in game tree
+    :param alpha: alpha value for pruning
+    :param beta: beta value for pruning
+    :return:
+    """
 
     # if we're at an end state,
     if (depth == 0) or check_game_over(board):
@@ -91,8 +104,10 @@ def generate_move_negamax(
     board: np.ndarray, player: BoardPiece, saved_state: Optional[SavedState]
 ) -> Tuple[PlayerAction, Optional[SavedState]]:
     """
-    :param board:
-    :param player:
+    Generate move using negamax -- including some workaround to force winning moves and blocking moves.
+
+    :param board: current board state
+    :param player: current player
     :param saved_state:
     :return:
     """
